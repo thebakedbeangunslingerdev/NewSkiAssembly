@@ -1,4 +1,4 @@
-; ski_snowman.asm - Real-time SkiFree clone with Abnormal Snowman
+; ski_snowman.asm - Real-time NewSkiAssembly clone with Abomonal Snowman
 ; Assemble: nasm -f elf32 ski_snowman.asm
 ; Link: ld -m elf_i386 -s -o ski_snowman ski_snowman.o
 ; Run: ./ski_snowman
