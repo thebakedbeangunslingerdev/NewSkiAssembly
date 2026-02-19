@@ -1,4 +1,4 @@
-; ski.asm - Real-time text SkiFree clone (Linux x86)
+; ski.asm - NewSkiAssembly (Linux x86)
 ; Assemble: nasm -f elf32 ski.asm
 ; Link: ld -m elf_i386 -s -o ski ski.o
 ; Run in terminal: ./ski
