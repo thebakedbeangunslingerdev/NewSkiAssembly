@@ -93,27 +93,25 @@ game_loop:
 
     ; 4. draw snowman if active
     cmp byte [snowmanActive], 0
-    je .skip_snowman
+    je skip_snowman
     mov al, [snowmanX]
     mov eax, 4
     mov ebx, 1
     mov ecx, snowman_char
     mov edx, 1
     int 0x80
-.skip_snowman:
+skip_snowman:
 
     ; 5. draw car if active
     cmp byte [carActive], 0
-    je .skip_car
-    ; Car occupies 4 rows, print each row
-    mov al, [carX]
-    ; For simplicity, just print C character as a placeholder
+    je skip_car
+    ; For simplicity, just print first line
     mov eax, 4
     mov ebx, 1
     mov ecx, car_line1
     mov edx, 5
     int 0x80
-.skip_car:
+skip_car:
 
     ; 6. print score
     mov eax, 4
@@ -125,17 +123,17 @@ game_loop:
     ; 7. spawn snowman after score>=10
     mov eax, [score]
     cmp eax, 10
-    jl .skip_spawn_snowman
+    jl skip_spawn_snowman
     cmp byte [snowmanActive], 1
-    je .skip_spawn_snowman
+    je skip_spawn_snowman
     call spawn_snowman
-.skip_spawn_snowman:
+skip_spawn_snowman:
 
     ; 8. spawn car randomly if inactive
     cmp byte [carActive], 1
-    je .skip_spawn_car
+    je skip_spawn_car
     call spawn_car
-.skip_spawn_car:
+skip_spawn_car:
 
     ; 9. input (non-blocking)
     mov eax, 3
@@ -144,97 +142,97 @@ game_loop:
     mov edx, 1
     int 0x80
     cmp byte [key], 'a'
-    jne .check_d
+    jne check_d
     ; move left
     mov al, [skierX]
     cmp al, 0
-    je .skip_left
+    je skip_left
     dec byte [skierX]
-.skip_left:
-.check_d:
+skip_left:
+check_d:
     cmp byte [key], 'd'
-    jne .skip_right
+    jne skip_right
     mov al, [skierX]
     cmp al, width-1
-    jae .skip_right
+    jae skip_right
     inc byte [skierX]
-.skip_right:
+skip_right:
 
     ; 10. update trees
     mov ecx, tree_count
     mov esi, trees
-.update_trees:
+update_trees:
     inc byte [esi+1]
     cmp byte [esi+1], height
-    jl .no_wrap
+    jl no_wrap
     mov byte [esi+1], 0
     inc dword [score]
-.no_wrap:
+no_wrap:
     add esi, 2
-    loop .update_trees
+    loop update_trees
 
     ; 11. update snowman
     cmp byte [snowmanActive], 0
-    je .skip_update_snowman
+    je skip_update_snowman
     inc byte [snowmanY]
     cmp byte [snowmanY], height
-    jl .no_wrap_snowman
+    jl no_wrap_snowman
     mov byte [snowmanY], 0
-.no_wrap_snowman:
-.skip_update_snowman:
+no_wrap_snowman:
+skip_update_snowman:
 
     ; 12. update car
     cmp byte [carActive], 0
-    je .skip_update_car
+    je skip_update_car
     inc byte [carY]
     cmp byte [carY], height
-    jl .no_wrap_car
+    jl no_wrap_car
     mov byte [carActive], 0
-.no_wrap_car:
-.skip_update_car:
+no_wrap_car:
+skip_update_car:
 
     ; 13. check collisions - trees
     mov ecx, tree_count
     mov esi, trees
-.check_tree_collision:
+check_tree_collision:
     mov al, [esi]
     mov bl, [esi+1]
     mov dl, [skierX]
     cmp bl, height-1
-    jne .next_tree
+    jne next_tree
     cmp al, dl
-    jne .next_tree
-    jmp .game_over
-.next_tree:
+    jne next_tree
+    jmp game_over
+next_tree:
     add esi, 2
-    loop .check_tree_collision
+    loop check_tree_collision
 
     ; 14. check collision - snowman
     cmp byte [snowmanActive], 0
-    je .skip_snowman_collision
+    je skip_snowman_collision
     mov al, [skierX]
     cmp al, [snowmanX]
-    jne .skip_snowman_collision
+    jne skip_snowman_collision
     cmp byte [snowmanY], height-1
-    jne .skip_snowman_collision
-    jmp .game_over
-.skip_snowman_collision:
+    jne skip_snowman_collision
+    jmp game_over
+skip_snowman_collision:
 
     ; 15. check collision - car
     cmp byte [carActive], 0
-    je .skip_car_collision
+    je skip_car_collision
     mov al, [skierX]
     cmp al, [carX]
-    jne .skip_car_collision
+    jne skip_car_collision
     cmp byte [carY], height-1
-    jne .skip_car_collision
-    jmp .game_over
-.skip_car_collision:
+    jne skip_car_collision
+    jmp game_over
+skip_car_collision:
 
     ; 16. delay
     mov ecx, 7000000
-.delay:
-    loop .delay
+delay:
+    loop delay
 
     jmp game_loop
 
@@ -269,7 +267,9 @@ rand:
     mov al, dl
     ret
 
-.game_over:
+; -------------------------
+; game over
+game_over:
     mov eax, 4
     mov ebx, 1
     mov ecx, newline
