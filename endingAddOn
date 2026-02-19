@@ -1,0 +1,281 @@
+; NewSkiAssembly.asm - Real-time SkiFree clone with Abnormal Snowman + Car
+; Assemble: nasm -f elf32 NewSkiAssembly.asm
+; Link: ld -m elf_i386 -s -o NewSkiAssembly NewSkiAssembly.o
+; Run: ./NewSkiAssembly
+
+section .data
+    clear_screen db 27,'[2J',27,'[H',0
+    newline db 10,0
+    skier_char db 'A'
+    tree_char db 'T'
+    snowman_char db 'S'
+    car_line1 db '  __',0
+    car_line2 db '_/  \_',0
+    car_line3 db '|    |',0
+    car_line4 db 'O    O',0
+    prompt db 'Score: ',0
+    width equ 30
+    height equ 20
+    tree_count equ 20
+
+section .bss
+    skierX resb 1
+    score resd 1
+    trees resb tree_count*2
+    key resb 1
+    snowmanX resb 1
+    snowmanY resb 1
+    snowmanActive resb 1
+
+    carX resb 1
+    carY resb 1
+    carActive resb 1
+
+section .text
+global _start
+
+_start:
+    ; initialize skier
+    mov byte [skierX], width/2
+    mov dword [score], 0
+    mov byte [snowmanActive], 0
+    mov byte [carActive], 0
+
+    ; initialize trees
+    mov ecx, tree_count
+    mov esi, trees
+.init_trees:
+    call rand
+    xor edx, edx
+    mov ebx, width
+    div ebx
+    mov [esi], al
+    inc esi
+    call rand
+    xor edx, edx
+    mov ebx, height
+    div ebx
+    mov [esi], al
+    inc esi
+    loop .init_trees
+
+game_loop:
+    ; 1. clear screen
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, clear_screen
+    mov edx, 7
+    int 0x80
+
+    ; 2. draw trees
+    mov ecx, tree_count
+    mov esi, trees
+.draw_trees:
+    movzx eax, byte [esi]
+    mov edx, eax
+    inc esi
+    movzx eax, byte [esi]
+    inc esi
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, tree_char
+    mov edx, 1
+    int 0x80
+    loop .draw_trees
+
+    ; 3. draw skier
+    mov al, [skierX]
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, skier_char
+    mov edx, 1
+    int 0x80
+
+    ; 4. draw snowman if active
+    cmp byte [snowmanActive], 0
+    je .skip_snowman
+    mov al, [snowmanX]
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, snowman_char
+    mov edx, 1
+    int 0x80
+.skip_snowman:
+
+    ; 5. draw car if active
+    cmp byte [carActive], 0
+    je .skip_car
+    ; Car occupies 4 rows, print each row
+    mov al, [carX]
+    ; For simplicity, just print C character as a placeholder
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, car_line1
+    mov edx, 5
+    int 0x80
+.skip_car:
+
+    ; 6. print score
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, prompt
+    mov edx, 7
+    int 0x80
+
+    ; 7. spawn snowman after score>=10
+    mov eax, [score]
+    cmp eax, 10
+    jl .skip_spawn_snowman
+    cmp byte [snowmanActive], 1
+    je .skip_spawn_snowman
+    call spawn_snowman
+.skip_spawn_snowman:
+
+    ; 8. spawn car randomly if inactive
+    cmp byte [carActive], 1
+    je .skip_spawn_car
+    call spawn_car
+.skip_spawn_car:
+
+    ; 9. input (non-blocking)
+    mov eax, 3
+    mov ebx, 0
+    mov ecx, key
+    mov edx, 1
+    int 0x80
+    cmp byte [key], 'a'
+    jne .check_d
+    ; move left
+    mov al, [skierX]
+    cmp al, 0
+    je .skip_left
+    dec byte [skierX]
+.skip_left:
+.check_d:
+    cmp byte [key], 'd'
+    jne .skip_right
+    mov al, [skierX]
+    cmp al, width-1
+    jae .skip_right
+    inc byte [skierX]
+.skip_right:
+
+    ; 10. update trees
+    mov ecx, tree_count
+    mov esi, trees
+.update_trees:
+    inc byte [esi+1]
+    cmp byte [esi+1], height
+    jl .no_wrap
+    mov byte [esi+1], 0
+    inc dword [score]
+.no_wrap:
+    add esi, 2
+    loop .update_trees
+
+    ; 11. update snowman
+    cmp byte [snowmanActive], 0
+    je .skip_update_snowman
+    inc byte [snowmanY]
+    cmp byte [snowmanY], height
+    jl .no_wrap_snowman
+    mov byte [snowmanY], 0
+.no_wrap_snowman:
+.skip_update_snowman:
+
+    ; 12. update car
+    cmp byte [carActive], 0
+    je .skip_update_car
+    inc byte [carY]
+    cmp byte [carY], height
+    jl .no_wrap_car
+    mov byte [carActive], 0
+.no_wrap_car:
+.skip_update_car:
+
+    ; 13. check collisions - trees
+    mov ecx, tree_count
+    mov esi, trees
+.check_tree_collision:
+    mov al, [esi]
+    mov bl, [esi+1]
+    mov dl, [skierX]
+    cmp bl, height-1
+    jne .next_tree
+    cmp al, dl
+    jne .next_tree
+    jmp .game_over
+.next_tree:
+    add esi, 2
+    loop .check_tree_collision
+
+    ; 14. check collision - snowman
+    cmp byte [snowmanActive], 0
+    je .skip_snowman_collision
+    mov al, [skierX]
+    cmp al, [snowmanX]
+    jne .skip_snowman_collision
+    cmp byte [snowmanY], height-1
+    jne .skip_snowman_collision
+    jmp .game_over
+.skip_snowman_collision:
+
+    ; 15. check collision - car
+    cmp byte [carActive], 0
+    je .skip_car_collision
+    mov al, [skierX]
+    cmp al, [carX]
+    jne .skip_car_collision
+    cmp byte [carY], height-1
+    jne .skip_car_collision
+    jmp .game_over
+.skip_car_collision:
+
+    ; 16. delay
+    mov ecx, 7000000
+.delay:
+    loop .delay
+
+    jmp game_loop
+
+; -------------------------
+; spawn snowman
+spawn_snowman:
+    call rand
+    xor edx, edx
+    mov ebx, width
+    div ebx
+    mov [snowmanX], al
+    mov byte [snowmanY], 0
+    mov byte [snowmanActive], 1
+    ret
+
+; spawn car
+spawn_car:
+    call rand
+    xor edx, edx
+    mov ebx, width
+    div ebx
+    mov [carX], al
+    mov byte [carY], 0
+    mov byte [carActive], 1
+    ret
+
+; simple rand
+rand:
+    mov eax, 0
+    rdtsc
+    xor edx, edx
+    mov al, dl
+    ret
+
+.game_over:
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, newline
+    mov edx, 1
+    int 0x80
+
+    mov eax, 1
+    mov ebx, 0
+    int 0x80
