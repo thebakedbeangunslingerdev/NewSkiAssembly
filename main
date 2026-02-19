@@ -1,0 +1,182 @@
+; ski.asm - Real-time text SkiFree clone (Linux x86)
+; Assemble: nasm -f elf32 ski.asm
+; Link: ld -m elf_i386 -s -o ski ski.o
+; Run in terminal: ./ski
+
+section .data
+    clear_screen db 27,'[2J',27,'[H',0  ; ANSI escape clear screen
+    newline db 10,0
+    skier_char db 'A'
+    tree_char db 'T'
+    prompt db 'Score: ',0
+    width equ 30
+    height equ 20
+    tree_count equ 20
+
+section .bss
+    skierX resb 1
+    score resd 1
+    trees resb tree_count*2 ; x,y positions for each tree
+    key resb 1
+
+section .text
+global _start
+
+_start:
+    ; initialize skier at middle
+    mov byte [skierX], width/2
+    mov dword [score], 0
+
+    ; initialize trees with random positions
+    mov ecx, tree_count
+    mov esi, trees
+.init_trees:
+    ; x = rand % width
+    mov eax, 0
+    call rand
+    xor edx, edx
+    mov ebx, width
+    div ebx
+    mov [esi], al    ; x
+    inc esi
+    ; y = rand % height
+    mov eax, 0
+    call rand
+    xor edx, edx
+    mov ebx, height
+    div ebx
+    mov [esi], al    ; y
+    inc esi
+    loop .init_trees
+
+game_loop:
+
+    ; 1. clear screen
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, clear_screen
+    mov edx, 7
+    int 0x80
+
+    ; 2. draw trees
+    mov ecx, tree_count
+    mov esi, trees
+.draw_trees:
+    ; get x
+    movzx eax, byte [esi]
+    mov edx, eax
+    ; get y
+    inc esi
+    movzx eax, byte [esi]
+    inc esi
+
+    ; move cursor: \033[y;xH
+    push eax
+    push edx
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, tree_char
+    mov edx, 1
+    int 0x80
+    pop edx
+    pop eax
+    loop .draw_trees
+
+    ; 3. draw skier at bottom
+    mov al, [skierX]
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, skier_char
+    mov edx, 1
+    int 0x80
+
+    ; 4. print score
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, prompt
+    mov edx, 7
+    int 0x80
+
+    ; 5. input (non-blocking)
+    mov eax, 3
+    mov ebx, 0
+    mov ecx, key
+    mov edx, 1
+    int 0x80
+    cmp byte [key], 'a'
+    jne .check_d
+    ; move left
+    mov al, [skierX]
+    cmp al, 0
+    je .skip_left
+    dec byte [skierX]
+.skip_left:
+
+.check_d:
+    cmp byte [key], 'd'
+    jne .skip_right
+    ; move right
+    mov al, [skierX]
+    cmp al, width-1
+    jae .skip_right
+    inc byte [skierX]
+.skip_right:
+
+    ; 6. update trees (fall down)
+    mov ecx, tree_count
+    mov esi, trees
+.update_trees:
+    inc byte [esi+1]  ; y++
+    cmp byte [esi+1], height
+    jl .no_wrap
+    mov byte [esi+1], 0
+    inc dword [score]
+.no_wrap:
+    add esi, 2
+    loop .update_trees
+
+    ; 7. check collisions
+    mov ecx, tree_count
+    mov esi, trees
+.check_collision:
+    mov al, [esi]
+    mov bl, [esi+1]
+    mov dl, [skierX]
+    cmp bl, height-1
+    jne .next_tree
+    cmp al, dl
+    jne .next_tree
+    ; collision! exit
+    jmp .game_over
+.next_tree:
+    add esi, 2
+    loop .check_collision
+
+    ; 8. small delay
+    mov ecx, 10000000
+.delay:
+    loop .delay
+
+    jmp game_loop
+
+.game_over:
+    mov eax, 4
+    mov ebx, 1
+    mov ecx, newline
+    mov edx, 1
+    int 0x80
+
+    ; exit program
+    mov eax, 1
+    mov ebx, 0
+    int 0x80
+
+; --------------------------------------------------
+; simple rand function (pseudo-random)
+rand:
+    ; just return AL random-ish value using time
+    mov eax, 0
+    rdtsc
+    xor edx, edx
+    mov al, dl
+    ret
